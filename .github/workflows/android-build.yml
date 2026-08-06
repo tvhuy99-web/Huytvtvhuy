@@ -37,12 +37,12 @@ jobs:
             exit 0
           fi
 
-          test -d source-archive
-          cat source-archive/part-* | base64 --decode > /tmp/GeminiLiveTranslateKotlin_v1.2.0.zip
-          echo "1f5f26a884162265b47b5ac4844d1d76a8dd67f6a2e8fd5ea1b722c527d2c1dc  /tmp/GeminiLiveTranslateKotlin_v1.2.0.zip" | sha256sum --check --strict
+          test -d source-xz
+          cat source-xz/chunk-* | base64 --decode > /tmp/GeminiLiveTranslateKotlin_v1.2.0.tar.xz
+          echo "32193b141e6b0d30e49c6ba9e3182036b32ad99fe000e3c9c8697fd795931dc5  /tmp/GeminiLiveTranslateKotlin_v1.2.0.tar.xz" | sha256sum --check --strict
           rm -rf .ci-source
           mkdir -p .ci-source
-          unzip -q /tmp/GeminiLiveTranslateKotlin_v1.2.0.zip -d .ci-source
+          tar -xJf /tmp/GeminiLiveTranslateKotlin_v1.2.0.tar.xz -C .ci-source
           test -f .ci-source/GeminiLiveTranslateKotlin/settings.gradle.kts
           echo "project_dir=$GITHUB_WORKSPACE/.ci-source/GeminiLiveTranslateKotlin" >> "$GITHUB_OUTPUT"
           echo "bootstrap=true" >> "$GITHUB_OUTPUT"
@@ -107,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           rsync -a --exclude '.git' --exclude '.github' "${{ steps.source.outputs.project_dir }}/" ./
-          rm -rf source-archive .ci-source
+          rm -rf source-archive source-xz .ci-source
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
