@@ -4,4 +4,10 @@
 
 Mã nguồn phát hành hiện tại: **v1.2.0**.
 
-APK được xây dựng tự động bằng GitHub Actions. Xem workflow `Android APK` trong tab Actions và tải artifact `GeminiLiveTranslate-APK` sau khi build thành công.
+## APK
+
+APK debug được xây dựng và kiểm thử tự động bằng GitHub Actions. Sau khi pipeline hoàn tất, tệp được lưu tại:
+
+`artifacts/GeminiLiveTranslate-v1.2.0-debug.apk`
+
+Workflow chính: `Android APK Direct`.
