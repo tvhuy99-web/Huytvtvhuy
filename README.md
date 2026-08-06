@@ -11,3 +11,5 @@ APK debug được xây dựng và kiểm thử tự động bằng GitHub Actio
 `artifacts/GeminiLiveTranslate-v1.2.0-debug.apk`
 
 Workflow chính: `Android APK Direct`.
+
+Build xác minh cuối: `2026-08-06`.
