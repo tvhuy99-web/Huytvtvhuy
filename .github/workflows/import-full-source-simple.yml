@@ -1,4 +1,4 @@
-name: Import Full Source Simple
+name: Import verified Android source chunks
 
 on:
   pull_request:
@@ -10,35 +10,84 @@ permissions:
 
 jobs:
   import-build:
-    if: startsWith(github.head_ref, 'import/full-source')
+    if: startsWith(github.head_ref, 'import/source-chunks')
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
-      - name: Checkout pull request branch
+      - name: Checkout source branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Download and expand verified source
+      - name: Verify chunks and reconstruct source ZIP
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f settings.gradle.kts ]]; then
-            curl -fL --retry 5 --retry-delay 3 \
-              https://gemini-live-translate-build-source.netlify.app/GeminiLiveTranslateKotlin_v1.2.0.zip \
-              -o /tmp/source.zip
-            echo "1f5f26a884162265b47b5ac4844d1d76a8dd67f6a2e8fd5ea1b722c527d2c1dc  /tmp/source.zip" | sha256sum -c -
-            unzip -tq /tmp/source.zip
-            rm -rf /tmp/source
-            mkdir -p /tmp/source
-            unzip -q /tmp/source.zip -d /tmp/source
-            test -f /tmp/source/GeminiLiveTranslateKotlin/settings.gradle.kts
-            rsync -a --delete --exclude='.git/' --exclude='.github/' /tmp/source/GeminiLiveTranslateKotlin/ ./
-            rm -rf source-archive source-xz .ci-source BUILD_FAILURE_CONFIRMED.txt IMPORT_FULL_SOURCE.txt
-          fi
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          from pathlib import Path
+
+          root = Path('source-clean')
+          manifest = (root / 'manifest.txt').read_text(encoding='utf-8').splitlines()
+          expected_parts = {}
+          expected_zip = None
+          expected_length = None
+          expected_count = None
+          for line in manifest:
+              if not line.strip():
+                  continue
+              if line.startswith('ZIP_SHA256  '):
+                  expected_zip = line.split(None, 1)[1]
+              elif line.startswith('BASE64_LENGTH  '):
+                  expected_length = int(line.split(None, 1)[1])
+              elif line.startswith('PART_COUNT  '):
+                  expected_count = int(line.split(None, 1)[1])
+              else:
+                  digest, name = line.split()
+                  expected_parts[name] = digest
+
+          names = sorted(expected_parts)
+          if len(names) != expected_count:
+              raise SystemExit(f'Part count mismatch: {len(names)} != {expected_count}')
+
+          encoded_parts = []
+          for name in names:
+              data = (root / name).read_bytes()
+              actual = hashlib.sha256(data).hexdigest()
+              print(f'{name}: bytes={len(data)} sha256={actual}')
+              if actual != expected_parts[name]:
+                  raise SystemExit(f'Chunk checksum mismatch: {name}')
+              encoded_parts.append(data)
+
+          encoded = b''.join(encoded_parts)
+          if len(encoded) != expected_length:
+              raise SystemExit(f'Base64 length mismatch: {len(encoded)} != {expected_length}')
+          archive = base64.b64decode(encoded, validate=True)
+          actual_zip = hashlib.sha256(archive).hexdigest()
+          print(f'zip: bytes={len(archive)} sha256={actual_zip}')
+          if actual_zip != expected_zip:
+              raise SystemExit('ZIP checksum mismatch')
+          Path('/tmp/source.zip').write_bytes(archive)
+          PY
+          unzip -tq /tmp/source.zip
+          rm -rf /tmp/source
+          mkdir -p /tmp/source
+          unzip -q /tmp/source.zip -d /tmp/source
+          test -f /tmp/source/GeminiLiveTranslate_GitHubReady_v1.2.0/settings.gradle.kts
+
+      - name: Replace repository with complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/source/GeminiLiveTranslate_GitHubReady_v1.2.0/. ./
+          test -f settings.gradle.kts
+          test -f app/build.gradle.kts
+          test -f .github/workflows/android.yml
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -60,7 +109,7 @@ jobs:
       - name: Run tests and build APK
         run: /tmp/gradle-8.10.2/bin/gradle --no-daemon --stacktrace clean test assembleDebug
 
-      - name: Prepare APK and checksum
+      - name: Prepare and validate APK
         shell: bash
         run: |
           set -euo pipefail
@@ -76,10 +125,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Import complete Android source and verified APK"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
+          git commit -m "Import complete Android source and verified APK"
+          git push origin HEAD:${{ github.head_ref }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
