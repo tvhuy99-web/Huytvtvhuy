@@ -1,0 +1,1 @@
+The previous GitHub Actions run failed because source-archive/part-004 did not match its expected SHA-256. This marker will be removed when the complete Android source is committed and a clean build passes.
